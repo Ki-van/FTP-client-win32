@@ -8,30 +8,13 @@
 #define MAX_LOADSTRING      100
 #define IDC_LISTVIEW_FILES	2001
 
-#define DATA_BUFFER_SIZE 1024000
-#define COMMAND_BUFFER_SIZE 10240
-
-// Structs
-
-struct ThreadStruct {
-	HANDLE hRecieveEvent;
-	HANDLE hWaitEvent;
-	LPVOID pvRecieveBuffer;
-	DWORD dwBytesRecieve;
-	SOCKET* socket;
-} ReciveCommandThreadStruct, ReciveDataThreadStruct;
-
 // Global Variables:
 HINSTANCE hInst;                                // current instance
 WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
 WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
-LPVOID pvReciveDataBuffer = NULL;
-LPVOID pvReciveCommandBuffer = NULL;
-HANDLE hDataReciveEvent, hWaitDataEvent, hWaitConnectEvent, hCommandReciveEvent, hWaitCommandEvent;
-SOCKET sCommand;
-SOCKET sData;
 HWND hWndMain;
-WSADATA wlib;
+FTPClient command, data;
+
 // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
@@ -39,11 +22,6 @@ LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    ServerChoose(HWND, UINT, WPARAM, LPARAM);
 BOOL                OnCreate(HWND hwnd, LPCREATESTRUCT lpCreateStruct);
-DWORD WINAPI        RecieveThread(PVOID);
-DWORD				WaitAnswerRecieve(DWORD);
-VOID				SendCommandInSock(SOCKET* pSock, char* pOutBuffer, int size);
-VOID				ClearThreadStrucBuffer(ThreadStruct* ts, int bufferSize);
-
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	_In_opt_ HINSTANCE hPrevInstance,
@@ -136,50 +114,6 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	ShowWindow(hWndMain, nCmdShow);
 	UpdateWindow(hWndMain);
 
-	pvReciveDataBuffer = VirtualAlloc(NULL, DATA_BUFFER_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-	pvReciveCommandBuffer = VirtualAlloc(NULL, COMMAND_BUFFER_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-
-	if (pvReciveCommandBuffer == NULL || pvReciveDataBuffer == NULL)
-	{
-		return FALSE;
-	}
-
-	hDataReciveEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-	hWaitDataEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-	hCommandReciveEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-	hWaitConnectEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-	hWaitCommandEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-	
-	if (hDataReciveEvent == NULL)
-	{
-		return FALSE;
-	}
-
-	
-	ReciveCommandThreadStruct = {
-		hCommandReciveEvent,
-		hWaitCommandEvent,
-		pvReciveCommandBuffer,
-		0,
-		&sCommand
-	};
-
-	ReciveDataThreadStruct = {
-		hDataReciveEvent,
-		hWaitDataEvent,
-		pvReciveDataBuffer,
-		0,
-		&sData
-	};
-
-	CreateThread(NULL, NULL, RecieveThread, (PVOID)&ReciveCommandThreadStruct, NORMAL_PRIORITY_CLASS, NULL);
-	CreateThread(NULL, NULL, RecieveThread, (PVOID)&ReciveDataThreadStruct, NORMAL_PRIORITY_CLASS, NULL);
-
-	if (WSAStartup(MAKEWORD(2, 2), &wlib) != 0)
-	{
-		return FALSE;
-	}
-
 	return TRUE;
 }
 
@@ -207,9 +141,27 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		switch (wmId)
 		{
 		
-		case IDM_NEWCONNECT:
-			DialogBox(hInst, MAKEINTRESOURCE(IDD_SERVER_CHOOSE), hWnd, ServerChoose);
-			break;
+		case IDM_NEWCONNECT: {
+			INT_PTR result = DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_SERVER_CHOOSE), hWnd, ServerChoose, NULL);
+			
+			if (result == TRUE) {
+				int a1, a2, a3, a4, p1, p2;
+				char buf[1024];
+				command.SendMsg("PASV\r\n", 6);
+				command.RecvMsg(buf, 1024);
+				sscanf_s(buf, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d).\r\n", &a1, &a2, &a3, &a4, &p1, &p2);
+				int dataPort = (p1 * 256) + p2;
+
+				//Opening new data connection to appempt to STOR file in server root dir.
+				data.Connect(dataPort, command.saddr.sin_addr.s_addr);
+				command.SendMsg("LIST\r\n", 6);
+				command.RecvMsg();
+
+				data.RecvMsg();
+				command.RecvMsg();
+			}
+
+		}break;
 
 		case IDM_ABOUT:
 			DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
@@ -317,69 +269,36 @@ INT_PTR CALLBACK ServerChoose(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 			DWORD address;
 			SendMessage(hWndIpControl, IPM_GETADDRESS, (WPARAM)0, (LPARAM)&address);
 			
-			sockaddr_in saddr;
-			saddr.sin_family = AF_INET;
-			saddr.sin_port = htons(21);
-			saddr.sin_addr.s_addr = ntohl((ULONG)address);
+			command.Connect(21, ntohl((ULONG)address));
+			command.RecvMsg();
+			command.RecvMsg();
 
-			sCommand = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+			char* user = NULL, * password = NULL;
+
+			if (SendDlgItemMessage(hDlg, IDC_CHECK_ANON, BM_GETCHECK, 0, 0))
+			{
+				user = new char[] {"anonymous"};
+				password = new char[] {"1@1"};
+			}
 			
-			if (connect(sCommand, (SOCKADDR*)(&saddr), sizeof(saddr)) != 0)
-			{
-				TCHAR t[] = TEXT("Faild to connect 0((");
-				MessageBox(hDlg, t, NULL, MB_OK);
-			}
-			else 
-			{
-				WSAEventSelect(sCommand, hCommandReciveEvent, FD_READ);
-				WaitAnswerRecieve(5000);
-				
-				logA("%s", (const char*)pvReciveCommandBuffer);
-				ClearThreadStrucBuffer(&ReciveCommandThreadStruct, COMMAND_BUFFER_SIZE);
+			char userCommand[256];
+			sprintf_s(userCommand, "%s %s\r\n", "USER", user);
+			command.SendMsg(userCommand, strlen(userCommand));
+			command.RecvMsg();
+			
 
-				HWND hWndCheckBox = GetDlgItem(hDlg, IDC_CHECK_ANON);
-				char* user = NULL, * password = NULL;
+			char passwordCommand[256];
+			sprintf_s(passwordCommand, "%s %s\r\n", "PASS", password);
+			command.SendMsg(passwordCommand, strlen(passwordCommand));
+			command.RecvMsg();
 
-				if (SendDlgItemMessage(hDlg, IDC_CHECK_ANON, BM_GETCHECK, 0, 0))
-				{
-					user = new char[] {"anonymous"};
-					password = new char[] {"1@1"};
-				}
+			TCHAR text[] = TEXT("Соединение успешно установлено");
+			TCHAR caption[] = TEXT("Успех");
+			MessageBox(hDlg, text, NULL, MB_OK);
+			delete[] user, password;
 
-
-				char userCommand[256];
-				sprintf_s(userCommand, "%s %s\r\n", "USER", user);
-				SendCommandInSock(&sCommand, userCommand, 256);
-				logA("%s", (const char*)pvReciveCommandBuffer);
-				ClearThreadStrucBuffer(&ReciveCommandThreadStruct, COMMAND_BUFFER_SIZE);
-				//DWORD dwWaitResult = WaitAnswerRecieve(5000);
-				/*if (dwWaitResult != 0)
-				{
-					TCHAR t[] = TEXT("Ошибка регистрации на сервере");
-					MessageBox(hDlg, t, NULL, MB_OK);
-					return FALSE;
-				}*/
-				
-				char passwordCommand[256];
-				sprintf_s(passwordCommand, "%s %s\r\n", "PASSWORD", password);
-				SendCommandInSock(&sCommand, passwordCommand, strlen(passwordCommand));
-				logA("%s", (const char*)pvReciveCommandBuffer);
-				ClearThreadStrucBuffer(&ReciveCommandThreadStruct, COMMAND_BUFFER_SIZE);
-				/*WaitAnswerRecieve(5000);
-				if (dwWaitResult != 0)
-				{
-					TCHAR t[] = TEXT("Ошибка регистрации на сервере");
-					MessageBox(hDlg, t, NULL, MB_OK);
-					return FALSE;
-				}*/
-				TCHAR text[] = TEXT("Соединение успешно установлено");
-				TCHAR caption[] = TEXT("Успех");
-				MessageBox(hDlg, text, NULL, MB_OK);
-				delete[] user, password;
-
-				EndDialog(hDlg, 0);
-				return (INT_PTR)TRUE;
-			}
+			EndDialog(hDlg, 1);
+			return (INT_PTR)TRUE;
 			
 		}
 		if (LOWORD(wParam) == IDCANCEL)
@@ -390,91 +309,4 @@ INT_PTR CALLBACK ServerChoose(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 		break;
 	}
 	return (INT_PTR)FALSE;
-}
-
-VOID ClearThreadStrucBuffer(ThreadStruct* ts, int bufferSize)
-{
-	memset(ts->pvRecieveBuffer, 0, bufferSize);
-	ts->dwBytesRecieve = 0;
-}
-
-DWORD WaitAnswerRecieve(DWORD timeToWait) 
-{
-	DWORD dwWaitResult = WaitForSingleObject(hWaitCommandEvent, timeToWait);
-	if (dwWaitResult != WAIT_OBJECT_0) {
-		TCHAR t[] = TEXT("Ответ от сервера не получен ((");
-		MessageBox(hWndMain, t, NULL, MB_OK);
-		
-	} 
-	ResetEvent(hWaitCommandEvent);
-	return dwWaitResult;
-}
-
-DWORD WINAPI RecieveThread(PVOID pvParam)
-{
-	ThreadStruct* pThreadStruct = (ThreadStruct*)pvParam;
-
-	while (true) {
-		WaitForSingleObject(pThreadStruct->hRecieveEvent, INFINITE);
-		pThreadStruct->dwBytesRecieve += recv(
-			*pThreadStruct->socket,
-			(char*)pThreadStruct->pvRecieveBuffer + pThreadStruct->dwBytesRecieve,
-			COMMAND_BUFFER_SIZE,
-			0);
-
-		if (pThreadStruct == &ReciveCommandThreadStruct) {
-				if (*((char*)pThreadStruct->pvRecieveBuffer + pThreadStruct->dwBytesRecieve - 1) == '\n') {
-					SetEvent(pThreadStruct->hWaitEvent);
-					ResetEvent(pThreadStruct->hRecieveEvent);
-				}
-		} 
-	}
-	return (DWORD)TRUE;
-}
-
-VOID SendCommandInSock(SOCKET* pSock, char  * pOutBuffer, int size) 
-{
-	send(*pSock, pOutBuffer, size, 0);
-	DWORD dwWaitResult;
-	while (true)
-	{
-		dwWaitResult = WaitAnswerRecieve(5000);
-
-		if (dwWaitResult != 0)
-			return;
-
-		char* pAnswerBegin = (char*)pvReciveCommandBuffer + ReciveCommandThreadStruct.dwBytesRecieve - 2;
-		for (pAnswerBegin; pAnswerBegin > pvReciveCommandBuffer && *pAnswerBegin != '\n'; pAnswerBegin--);
-
-		pAnswerBegin++;
-
-		if (*pAnswerBegin == '1')
-		{
-			continue;
-		}
-		if (*pAnswerBegin > '3')
-		{
-			TCHAR t[] = TEXT("Команда сервером не выполнена (((");
-			MessageBox(hWndMain, t, NULL, MB_OK);
-			break;
-		}
-
-		break;
-	}
-}
-
-VOID CreateListenSock() 
-{
-	sData = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-
-	WSAEventSelect(sData, hDataReciveEvent, FD_ACCEPT | FD_READ | FD_CLOSE);
-
-	sockaddr_in saddr;
-	saddr.sin_family = AF_INET;
-	saddr.sin_port = 0;
-	saddr.sin_addr.S_un.S_addr = INADDR_ANY;
-	bind(sData, (SOCKADDR *)&saddr, sizeof(saddr));
-	int namelen = sizeof(saddr);
-	int sockname = getsockname(sData, (SOCKADDR*)&saddr, &namelen);
-	listen(sData, 1);
 }

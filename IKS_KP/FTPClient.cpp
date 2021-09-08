@@ -10,10 +10,11 @@ using namespace std;
 #include <winsock2.h>
 #include "FTPClient.h"
 #include "Ws2tcpip.h"
+#include "logger.h"
 #pragma comment(lib, "Ws2_32.lib") //Winsock Library
 
 void FTPClient::Connect(int port, char* adr) {
-	WSAStartup(0x0101, &wlib);
+	WSAStartup(MAKEWORD(2, 2), &wlib);
 	sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	saddr.sin_family = AF_INET;
 	saddr.sin_port = htons(port);
@@ -25,6 +26,20 @@ void FTPClient::Connect(int port, char* adr) {
 	cout << "\nConnected to server on IP " << adr << " and port " << port << "." << endl;
 }
 
+void FTPClient::Connect(int port, int adr) {
+	WSAStartup(MAKEWORD(2, 2), &wlib);
+	sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	saddr.sin_family = AF_INET;
+	saddr.sin_port = htons(port);
+	saddr.sin_addr.s_addr = adr;
+	
+	if (connect(sock, (SOCKADDR*)(&saddr), sizeof(saddr)) != 0) {
+		cout << "No connection established." << endl;
+		exit(1);
+	}
+}
+
+
 void FTPClient::SendMsg(char const *msg, int size) {
 	if (send(sock, msg, size, 0) == -1) {
 		cout << "Could not send message to server." << endl;
@@ -35,14 +50,16 @@ void FTPClient::SendMsg(char const *msg, int size) {
 }
 
 char* FTPClient::RecvMsg() {
-	cout << "Received from server:\t";
-
-	int x;
 	char received[1024];
-	x = recv(sock, received, 1024, 0); //recv() returns length of message
-	received[x] = '\0'; //0 indexing
-	cout << received;
+	RecvMsg(received, 1024);
 	return received;
+}
+
+void FTPClient::RecvMsg(char* buf, int size) {
+	int x;
+	x = recv(sock, buf, size, 0); //recv() returns length of message
+	buf[x] = '\0'; //0 indexing
+	logA("%s", buf);
 }
 
 void FTPClient::SaveFile(char filename[]) {
