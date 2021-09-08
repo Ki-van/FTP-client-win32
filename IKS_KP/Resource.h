@@ -18,6 +18,7 @@
 #define IDC_EDIT_LOGIN                  1007
 #define IDC_EDIT_PASSWORD               1008
 #define IDC_CHECK_ANON                  1009
+#define IDC_STATIC_CONNECTION           1011
 #define ID_FILE_NEWCONNECTION           32771
 #define IDM_NEWCONNECT                  32772
 #define IDC_STATIC                      -1
@@ -29,7 +30,7 @@
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        130
 #define _APS_NEXT_COMMAND_VALUE         32773
-#define _APS_NEXT_CONTROL_VALUE         1011
+#define _APS_NEXT_CONTROL_VALUE         1012
 #define _APS_NEXT_SYMED_VALUE           110
 #endif
 #endif

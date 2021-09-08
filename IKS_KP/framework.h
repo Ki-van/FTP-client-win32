@@ -15,9 +15,13 @@
 #include <tchar.h>
 #include <windowsx.h>
 
-#include <FTPClient.h>
-
 #include <commctrl.h>
 #include <tchar.h>
 
 #include <iostream>
+
+#include "Ws2tcpip.h"
+
+//my own
+#include <logger.h>
+#include <FTPClient.h>
