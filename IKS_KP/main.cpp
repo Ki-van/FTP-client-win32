@@ -7,6 +7,7 @@
 
 #define MAX_LOADSTRING      100
 #define IDC_LISTVIEW_FILES	2001
+#define IDC_SAVEFILEBTN		2002
 
 // Global Variables:
 HINSTANCE hInst;                                // current instance
@@ -25,6 +26,9 @@ BOOL                OnCreate(HWND hwnd, LPCREATESTRUCT lpCreateStruct);
 VOID				PopulateFileList();
 int					ExtractFileNameFromMLST(char const* filefacts, char* filename, int filenamesize);
 int					ExtractFactFromMLST(char const* filefacts, const char* fact, char* result);
+VOID				OnCommand(HWND hwnd, int id, HWND hwndCtl, UINT codeNotify);
+VOID				EnterPassivMode();
+VOID				OnNotify(HWND hwnd, LPNMHDR lpnmhdr);
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	_In_opt_ HINSTANCE hPrevInstance,
@@ -136,48 +140,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 
 		HANDLE_MSG(hWnd, WM_CREATE, OnCreate);
-
-	case WM_COMMAND:
-	{
-		int wmId = LOWORD(wParam);
-		// Parse the menu selections:
-		switch (wmId)
-		{
-		
-		case IDM_NEWCONNECT: {
-			INT_PTR result = DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_SERVER_CHOOSE), hWnd, ServerChoose, NULL);
-			
-			if (result == TRUE) {
-				int a1, a2, a3, a4, p1, p2;
-				char buf[2048];
-				command.SendMsg("PASV\r\n", 6);
-				command.RecvMsg(buf, 2048);
-				sscanf_s(buf, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d).\r\n", &a1, &a2, &a3, &a4, &p1, &p2);
-				int dataPort = (p1 * 256) + p2;
-
-				//Opening new data connection to appempt to STOR file in server root dir.
-				data.Connect(dataPort, command.saddr.sin_addr.s_addr);
-				command.SendMsg("MLSD\r\n", 6);
-				command.RecvMsg();
-				
-				PopulateFileList();
-
-				command.RecvMsg();
-			}
-
-		}break;
-
-		case IDM_ABOUT:
-			DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
-			break;
-		case IDM_EXIT:
-			DestroyWindow(hWnd);
-			break;
-		default:
-			return DefWindowProc(hWnd, message, wParam, lParam);
-		}
+		HANDLE_MSG(hWnd, WM_COMMAND, OnCommand);
+	case WM_NOTIFY: {
+		OnNotify(hWnd, (LPNMHDR)lParam);
+		return 0;
 	}
-	break;
 	case WM_PAINT:
 	{
 		PAINTSTRUCT ps;
@@ -218,6 +185,9 @@ BOOL OnCreate(HWND hwnd, LPCREATESTRUCT lpCreateStruct)
 	swprintf_s(szText, L"Время последнего изменения\0");
 	ListView_InsertColumn(hListView, 1, &lvCol);
 
+
+	CreateWindowEx(0, WC_BUTTON, TEXT(" Скачать файл"), WS_CHILD | WS_VISIBLE | WS_DISABLED | BS_TEXT,
+		365, 650, 145, 40, hwnd, (HMENU)IDC_SAVEFILEBTN, lpCreateStruct->hInstance, NULL);
 	return TRUE;
 }
 
@@ -316,7 +286,7 @@ INT_PTR CALLBACK ServerChoose(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 
 			TCHAR text[] = TEXT("Соединение успешно установлено");
 			TCHAR caption[] = TEXT("Успех");
-			MessageBox(hDlg, text, NULL, MB_OK);
+			MessageBox(hDlg, text, caption, MB_OK);
 			delete[] user, password;
 
 			EndDialog(hDlg, 1);
@@ -352,7 +322,7 @@ VOID PopulateFileList() {
 
 		int r = MultiByteToWideChar(CP_UTF8, 0, szfilenameA, filenamelen, &szfilenameW[0], (int)szfilenameW.size());
 
-		LVITEM lvItem = { LVIF_TEXT | LVIF_IMAGE };
+ 		LVITEM lvItem = { LVIF_TEXT | LVIF_IMAGE };
 		lvItem.iItem = ListView_GetItemCount(hListView);
 		lvItem.pszText = &szfilenameW[0];
 		lvItem.iItem = ListView_InsertItem(hListView, &lvItem);
@@ -383,7 +353,7 @@ int ExtractFileNameFromMLST(char const* filefacts, char *filename, int filenames
 		i++;
 	}
 
-	filename[filenameLen + 1] = '\0';
+	filename[filenameLen] = '\0';
 	filenameLen++;
 
 	return filenameLen;
@@ -399,4 +369,88 @@ int	ExtractFactFromMLST(char const* szFilefacts, const char* szFact, char* szFac
 	
 	for (; *pos != ';'; szFactVal[i] = *pos, i++, pos++);
 	return i;
+}
+
+VOID OnCommand(HWND hwnd, int id, HWND hwndCtl, UINT codeNotify)
+{
+	switch (id)
+	{
+	case IDC_SAVEFILEBTN: {
+		if (codeNotify == BN_CLICKED) {
+			
+			::std::wstring szFileNameW;
+			
+			szFileNameW.resize(128);
+			HWND hLsitView = GetDlgItem(hWndMain, IDC_LISTVIEW_FILES);
+			LVITEM lvItem = { LVFIF_TEXT };
+			lvItem.iItem = ListView_GetNextItem(hLsitView, -1, LVNI_SELECTED);
+			lvItem.iSubItem = 0;
+			lvItem.pszText = &szFileNameW[0];
+			lvItem.cchTextMax = 128;
+			ListView_GetItem(hLsitView, &lvItem);
+			EnterPassivMode();
+
+			char szFileNameA[128];
+			WideCharToMultiByte(CP_UTF8, 0, &szFileNameW[0], szFileNameW.size(), szFileNameA, 128, NULL, NULL);
+			char szRetrCommand[256];
+			
+			sprintf_s(szRetrCommand, "%s %s\r\n", "RETR", szFileNameA);
+			command.SendMsg(szRetrCommand, strlen(szRetrCommand));
+			
+			command.RecvMsg();
+			data.SaveFile(&szFileNameW[0]);
+			TCHAR text[256];
+			wsprintfW(text, L"Файл %s успешно скачан", &szFileNameW[0]);
+			TCHAR caption[] = TEXT("Успех");
+			MessageBox(hWndMain, text, caption, MB_OK);
+			data.CloseCon();
+			command.RecvMsg();
+		}
+	} break;
+	case IDM_NEWCONNECT: {
+		INT_PTR result = DialogBoxParam(hInst, MAKEINTRESOURCE(IDD_SERVER_CHOOSE), hwnd, ServerChoose, NULL);
+
+		if (result == TRUE) {
+			EnterPassivMode();
+			command.SendMsg("MLSD\r\n", 6);
+			command.RecvMsg();
+
+			PopulateFileList();
+			data.CloseCon();
+			command.RecvMsg();
+		}
+
+	}break;
+	case IDM_ABOUT:
+		DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hwnd, About);
+		break;
+	case IDM_EXIT:
+		DestroyWindow(hwnd);
+		break;
+	}
+}
+
+VOID EnterPassivMode() {
+	int a1, a2, a3, a4, p1, p2;
+	char buf[2048];
+	command.SendMsg("PASV\r\n", 6);
+	command.RecvMsg(buf, 2048);
+	sscanf_s(buf, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d).\r\n", &a1, &a2, &a3, &a4, &p1, &p2);
+	int dataPort = (p1 * 256) + p2;
+
+	//Opening new data connection to appempt to STOR file in server root dir.
+	data.Connect(dataPort, command.saddr.sin_addr.s_addr);
+}
+
+VOID OnNotify(HWND hwnd, LPNMHDR lpnmhdr)
+{
+	switch (lpnmhdr->code)
+	{
+	case NM_CLICK: {
+		if (lpnmhdr->idFrom == IDC_LISTVIEW_FILES)
+		{
+			EnableWindow(GetDlgItem(hWndMain, IDC_SAVEFILEBTN), TRUE);
+		}
+	} break;
+	}
 }

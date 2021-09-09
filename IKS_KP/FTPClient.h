@@ -9,7 +9,7 @@ public:
 	void  SendMsg(char const *msg, int size);
 	char* RecvMsg();
 	void  RecvMsg(char *buf, int size);
-	void  SaveFile(char filename[]);
+	void  SaveFile(wchar_t* filename);
 	void  CloseCon();
 	int  RecvNextMLST(char *filefact, u_int size);
 private:

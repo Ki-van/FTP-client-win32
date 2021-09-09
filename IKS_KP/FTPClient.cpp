@@ -62,20 +62,15 @@ void FTPClient::RecvMsg(char* buf, int size) {
 	logA("%s", buf);
 }
 
-void FTPClient::SaveFile(char filename[]) {
-	ofstream file;
-	file.open(filename);
-	char buffer[1];
-	int bytes = 0;
-	cout << "/*****FIRST 1 KB OF FILE**********************************************************************/" << endl;
-	while (recv(sock, buffer, sizeof(buffer), 0)) {
-		if (bytes < 1024)
-			cout << buffer[0];
-		file << buffer[0];
-		bytes++;
-	}
-	cout << "\n/*********************************************************************************************/" << endl;
-	file.close();
+void FTPClient::SaveFile(wchar_t *filename) {
+	auto output_stream = std::ofstream(filename, std::ios::binary);
+	char buffer[1024];
+	int bytes;
+	do {	
+		bytes = recv(sock, buffer, 1024, 0);
+		output_stream.write(buffer, bytes);
+	} while (bytes > 0);
+	output_stream.close();
 }
 
 
