@@ -5,7 +5,7 @@
 inline void logA(const char* format, ...)
 {
     char buf[1024];
-    wvsprintfA(buf, format, ((char*)&format) + sizeof(void*));
+    wvsprintfA(buf, format, ((char*)&format) + sizeof(void*)%1024);
     OutputDebugStringA(buf);
 }
 

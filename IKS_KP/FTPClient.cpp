@@ -66,7 +66,7 @@ void FTPClient::SaveFile(char filename[]) {
 	ofstream file;
 	file.open(filename);
 	char buffer[1];
-	int bytes(0);
+	int bytes = 0;
 	cout << "/*****FIRST 1 KB OF FILE**********************************************************************/" << endl;
 	while (recv(sock, buffer, sizeof(buffer), 0)) {
 		if (bytes < 1024)
@@ -76,6 +76,22 @@ void FTPClient::SaveFile(char filename[]) {
 	}
 	cout << "\n/*********************************************************************************************/" << endl;
 	file.close();
+}
+
+
+int FTPClient::RecvNextMLST(char* filefacts, u_int size)
+{
+	char buffer[2];
+	buffer[1] = '\0';
+	filefacts[0] = '\0';
+	int bytes = 0;
+	while (recv(sock, buffer, sizeof(char), 0)) {
+		strcat_s(filefacts, size,  buffer);
+		if (buffer[0] == '\n')
+			break;
+	}
+
+	return strlen(filefacts);
 }
 
 void FTPClient::CloseCon() {

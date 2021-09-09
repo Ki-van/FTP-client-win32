@@ -22,6 +22,9 @@ LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    ServerChoose(HWND, UINT, WPARAM, LPARAM);
 BOOL                OnCreate(HWND hwnd, LPCREATESTRUCT lpCreateStruct);
+VOID				PopulateFileList();
+int					ExtractFileNameFromMLST(char const* filefacts, char* filename, int filenamesize);
+int					ExtractFactFromMLST(char const* filefacts, const char* fact, char* result);
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	_In_opt_ HINSTANCE hPrevInstance,
@@ -146,18 +149,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			
 			if (result == TRUE) {
 				int a1, a2, a3, a4, p1, p2;
-				char buf[1024];
+				char buf[2048];
 				command.SendMsg("PASV\r\n", 6);
-				command.RecvMsg(buf, 1024);
+				command.RecvMsg(buf, 2048);
 				sscanf_s(buf, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d).\r\n", &a1, &a2, &a3, &a4, &p1, &p2);
 				int dataPort = (p1 * 256) + p2;
 
 				//Opening new data connection to appempt to STOR file in server root dir.
 				data.Connect(dataPort, command.saddr.sin_addr.s_addr);
-				command.SendMsg("LIST\r\n", 6);
+				command.SendMsg("MLSD\r\n", 6);
 				command.RecvMsg();
+				
+				PopulateFileList();
 
-				data.RecvMsg();
 				command.RecvMsg();
 			}
 
@@ -193,8 +197,26 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 BOOL OnCreate(HWND hwnd, LPCREATESTRUCT lpCreateStruct)
 {
+	CreateWindowEx(0, TEXT("Static"), TEXT("Список файлов"), WS_CHILD | WS_VISIBLE | SS_CENTER,
+		10, 10, 500, 20, hwnd, NULL, lpCreateStruct->hInstance, NULL);
 	HWND hListView = CreateWindowEx(0, WC_LISTVIEW, NULL, WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS,
 		10, 40, 500, 600, hwnd, (HMENU)IDC_LISTVIEW_FILES, lpCreateStruct->hInstance, NULL);
+	ListView_SetExtendedListViewStyle(hListView, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
+
+	WCHAR szText[256] = { L'\0' };
+	LVCOLUMN lvCol;
+
+	//Name column
+	lvCol.mask = LVCF_WIDTH | LVCF_TEXT;
+	lvCol.cx = 380;
+	lvCol.pszText = szText;
+	swprintf_s(szText, L"Имя\0");
+	ListView_InsertColumn(hListView, 0, &lvCol);
+
+	//PID column
+	lvCol.cx = 100;
+	swprintf_s(szText, L"Время последнего изменения\0");
+	ListView_InsertColumn(hListView, 1, &lvCol);
 
 	return TRUE;
 }
@@ -309,4 +331,72 @@ INT_PTR CALLBACK ServerChoose(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 		break;
 	}
 	return (INT_PTR)FALSE;
+}
+/// <summary>
+/// Require mlst format
+/// </summary>
+/// <param name="hListView"></param>
+/// <param name="mlst"></param>
+VOID PopulateFileList() {
+	
+	HWND hListView = GetDlgItem(hWndMain, IDC_LISTVIEW_FILES);
+	SendMessage(hListView, WM_SETREDRAW, FALSE, NULL);
+	
+	char filefacts[1024];
+
+	while(data.RecvNextMLST(filefacts, 1024)) {
+		char szfilenameA[512];
+		int filenamelen = ExtractFileNameFromMLST(filefacts, szfilenameA, 512);
+		::std::wstring szfilenameW;
+		szfilenameW.resize(1024);
+
+		int r = MultiByteToWideChar(CP_UTF8, 0, szfilenameA, filenamelen, &szfilenameW[0], (int)szfilenameW.size());
+
+		LVITEM lvItem = { LVIF_TEXT | LVIF_IMAGE };
+		lvItem.iItem = ListView_GetItemCount(hListView);
+		lvItem.pszText = &szfilenameW[0];
+		lvItem.iItem = ListView_InsertItem(hListView, &lvItem);
+		if (lvItem.iItem != -1) {
+			char szFileModify[128];
+			ExtractFactFromMLST(filefacts, "modify", szFileModify);
+
+			//swprintf_s(sz, L"%d", pe.th32ProcessID);
+			//ListView_SetItemText(hListView, lvItem.iItem, 1, sz);
+		}
+	}
+	SendMessage(hListView, WM_SETREDRAW, TRUE, NULL);
+	RedrawWindow(hListView, NULL, NULL, RDW_ERASE | RDW_FRAME | RDW_INVALIDATE | RDW_ALLCHILDREN);
+}
+
+int ExtractFileNameFromMLST(char const* filefacts, char *filename, int filenamesize)
+{
+	int i = strnlen_s(filefacts, filenamesize) - 1;
+	while (filefacts[i] != ';')
+		i--;
+	i++;
+
+	int filenameLen = 0;
+	while (filefacts[i] != '\r')
+	{
+		filename[filenameLen] = filefacts[i];
+		filenameLen++;
+		i++;
+	}
+
+	filename[filenameLen + 1] = '\0';
+	filenameLen++;
+
+	return filenameLen;
+}
+
+int	ExtractFactFromMLST(char const* szFilefacts, const char* szFact, char* szFactVal)
+{
+	const char *pos = strstr(szFilefacts, szFact);
+	if (pos == NULL)
+		return 0;
+	pos += strlen(szFact) + 1;
+	int i = 0;
+	
+	for (; *pos != ';'; szFactVal[i] = *pos, i++, pos++);
+	return i;
 }
