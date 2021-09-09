@@ -377,9 +377,8 @@ VOID OnCommand(HWND hwnd, int id, HWND hwndCtl, UINT codeNotify)
 	{
 	case IDC_SAVEFILEBTN: {
 		if (codeNotify == BN_CLICKED) {
-			
 			::std::wstring szFileNameW;
-			
+
 			szFileNameW.resize(128);
 			HWND hLsitView = GetDlgItem(hWndMain, IDC_LISTVIEW_FILES);
 			LVITEM lvItem = { LVFIF_TEXT };
@@ -388,6 +387,49 @@ VOID OnCommand(HWND hwnd, int id, HWND hwndCtl, UINT codeNotify)
 			lvItem.pszText = &szFileNameW[0];
 			lvItem.cchTextMax = 128;
 			ListView_GetItem(hLsitView, &lvItem);
+
+			IFileDialog* pfd = NULL;
+			PWSTR pszFilePath = NULL;
+			HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog,
+				NULL,
+				CLSCTX_INPROC_SERVER,
+				IID_PPV_ARGS(&pfd));
+			if (SUCCEEDED(hr))
+			{
+				DWORD dwFlags;
+
+				// Before setting, always get the options first in order 
+				// not to override existing options.
+				hr = pfd->GetOptions(&dwFlags);
+				if (SUCCEEDED(hr))
+				{
+					// In this case, get shell items only for file system items.
+					pfd->SetOptions(dwFlags | FOS_FORCEFILESYSTEM);
+					pfd->SetFileName(&szFileNameW[0]);
+					//pfd->SetDefaultExtension(PathFindExtensionW(&szFileNameW[0]));
+					pfd->Show(NULL);
+					IShellItem* psiResult;
+					hr = pfd->GetResult(&psiResult);
+					if (SUCCEEDED(hr))
+					{
+						// We are just going to print out the 
+						// name of the file for sample sake.
+						
+						hr = psiResult->GetDisplayName(SIGDN_FILESYSPATH,
+							&pszFilePath);
+						if (SUCCEEDED(hr))
+						{
+							logA("%s", pszFilePath);
+						
+						}
+						psiResult->Release();
+					}
+				}
+			}
+
+			pfd->Release();
+
+			
 			EnterPassivMode();
 
 			char szFileNameA[128];
@@ -398,13 +440,14 @@ VOID OnCommand(HWND hwnd, int id, HWND hwndCtl, UINT codeNotify)
 			command.SendMsg(szRetrCommand, strlen(szRetrCommand));
 			
 			command.RecvMsg();
-			data.SaveFile(&szFileNameW[0]);
+			data.SaveFile(pszFilePath);
 			TCHAR text[256];
 			wsprintfW(text, L"Файл %s успешно скачан", &szFileNameW[0]);
 			TCHAR caption[] = TEXT("Успех");
 			MessageBox(hWndMain, text, caption, MB_OK);
 			data.CloseCon();
 			command.RecvMsg();
+			CoTaskMemFree(pszFilePath);
 		}
 	} break;
 	case IDM_NEWCONNECT: {

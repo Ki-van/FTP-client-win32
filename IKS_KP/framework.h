@@ -15,6 +15,10 @@
 #include <tchar.h>
 #include <windowsx.h>
 
+#include <combaseapi.h>
+#include <shobjidl_core.h>
+#include <shlwapi.h>
+
 #include <commctrl.h>
 #include <tchar.h>
 
