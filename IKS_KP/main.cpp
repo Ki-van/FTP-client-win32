@@ -513,7 +513,10 @@ VOID OnCommand(HWND hwnd, int id, HWND hwndCtl, UINT codeNotify)
 			command.SendMsg(szRetrCommand, strlen(szRetrCommand));
 
 			command.RecvMsg();
-			data.SaveFile(pszFilePath);
+			if(wcslen(pszFilePath) > 0)
+				data.SaveFile(pszFilePath);
+			else 
+				data.SaveFile(&szFileNameW[0]);
 			TCHAR text[256];
 			wsprintfW(text, L"Файл %s успешно скачан", &szFileNameW[0]);
 			TCHAR caption[] = TEXT("Успех");
