@@ -285,11 +285,22 @@ INT_PTR CALLBACK ServerChoose(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 			command.RecvMsg();
 
 			char* user = NULL, * password = NULL;
-
+			wchar_t userW[64], passwordW[64];
 			if (SendDlgItemMessage(hDlg, IDC_CHECK_ANON, BM_GETCHECK, 0, 0))
 			{
 				user = new char[] {"anonymous"};
 				password = new char[] {"1@1"};
+			}
+			else
+			{
+				Edit_GetText(GetDlgItem(hDlg, IDC_EDIT_LOGIN), userW, 32);
+				Edit_GetText(GetDlgItem(hDlg, IDC_EDIT_PASSWORD), passwordW, 32);
+				user = new char[64];
+				password = new char[64];
+				int cb = WideCharToMultiByte(CP_UTF8, 0, userW, lstrlenW(userW), user, 64, 0, 0);
+				user[cb] = '\0';
+				cb = WideCharToMultiByte(CP_UTF8, 0, passwordW, lstrlenW(passwordW), password, 64, 0, 0);
+				password[cb] = '\0';
 			}
 
 			char userCommand[256];
@@ -317,7 +328,7 @@ INT_PTR CALLBACK ServerChoose(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)TRUE;
 		}
-
+		
 		switch (HIWORD(wParam))
 		{
 		case CBN_SELCHANGE:
@@ -329,7 +340,8 @@ INT_PTR CALLBACK ServerChoose(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 				ShowWindow(hIp, SW_SHOW);
 				HWND hHost = GetDlgItem(hDlg, IDC_EDIT_HOST);
 				ShowWindow(hHost, SW_HIDE);
-			} else 
+			}
+			else
 				if (index == 1) {
 					HWND hIp = GetDlgItem(hDlg, IDC_IPADDRESS);
 					ShowWindow(hIp, SW_HIDE);
@@ -337,12 +349,29 @@ INT_PTR CALLBACK ServerChoose(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 					ShowWindow(hHost, SW_SHOW);
 				}
 			return 0;
-		}
+		} break;
+		case BN_CLICKED: 
+		{
+			HWND hCheckBox = GetDlgItem(hDlg, IDC_CHECK_ANON);
+			HWND hLogin = GetDlgItem(hDlg, IDC_EDIT_LOGIN);
+			
+			HWND hPassword = GetDlgItem(hDlg, IDC_EDIT_PASSWORD);
+			if (SendMessage(hCheckBox, BM_GETCHECK, 0, 0) == BST_UNCHECKED)
+			{	
+				EnableWindow(hLogin, TRUE);
+				EnableWindow(hPassword, TRUE);
+			}
+			else
+			{
+				EnableWindow(hLogin, FALSE);
+				EnableWindow(hPassword, FALSE);
+			}
+		}break;
 		default:
 			break;
 		}
 	} break;
-
+	
 	}
 	return (INT_PTR)FALSE;
 }
