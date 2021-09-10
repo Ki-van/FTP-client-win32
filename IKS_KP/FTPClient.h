@@ -6,6 +6,7 @@ public:
 	sockaddr_in saddr;
 	void  Connect(int port, char* adr);
 	void  Connect(int port, int adr);
+	void  Connect(wchar_t* port, wchar_t *adr);
 	void  SendMsg(char const *msg, int size);
 	char* RecvMsg();
 	void  RecvMsg(char *buf, int size);

@@ -23,7 +23,6 @@ void FTPClient::Connect(int port, char* adr) {
 		cout << "No connection established." << endl;
 		exit(1);
 	}
-	cout << "\nConnected to server on IP " << adr << " and port " << port << "." << endl;
 }
 
 void FTPClient::Connect(int port, int adr) {
@@ -39,6 +38,21 @@ void FTPClient::Connect(int port, int adr) {
 	}
 }
 
+void  FTPClient::Connect(wchar_t* port, wchar_t* host)
+{
+	WSAStartup(MAKEWORD(2, 2), &wlib);
+	sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	SOCKADDR_STORAGE LocalAddr = {0};
+	DWORD dwLocalAddrSize = sizeof(saddr);
+	timeval timeout;
+	timeout.tv_sec = 5000;
+
+	if (WSAConnectByName(sock, host, port, &dwLocalAddrSize, (SOCKADDR*)&saddr, 0, NULL, &timeout, NULL) != TRUE)
+	{
+		cout << "No connection established." << endl;
+		exit(1);
+	}
+}
 
 void FTPClient::SendMsg(char const *msg, int size) {
 	if (send(sock, msg, size, 0) == -1) {

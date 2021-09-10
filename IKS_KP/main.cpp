@@ -111,7 +111,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	hInst = hInstance; // Store instance handle in our global variable
 
 	hWndMain = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-		CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, hInstance, nullptr);
+		CW_USEDEFAULT, 0, 530, 760, nullptr, nullptr, hInstance, nullptr);
 
 	if (!hWndMain)
 	{
@@ -183,7 +183,7 @@ BOOL OnCreate(HWND hwnd, LPCREATESTRUCT lpCreateStruct)
 	//PID column
 	lvCol.cx = 100;
 	swprintf_s(szText, L"Время последнего изменения\0");
-	ListView_InsertColumn(hListView, 1, &lvCol);
+	//ListView_InsertColumn(hListView, 1, &lvCol);
 
 
 	CreateWindowEx(0, WC_BUTTON, TEXT(" Скачать файл"), WS_CHILD | WS_VISIBLE | WS_DISABLED | BS_TEXT,
@@ -217,11 +217,11 @@ INT_PTR CALLBACK ServerChoose(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 	UNREFERENCED_PARAMETER(lParam);
 	switch (message)
 	{
-	
+
 	case WM_INITDIALOG:
 	{
 		HWND hWndComboBox = GetDlgItem(hDlg, IDC_ADDRESS_TYPE);
-
+		
 		TCHAR addressTypes[2][13] =
 		{
 			TEXT("IPv4"), TEXT("Доменное имя")
@@ -251,17 +251,36 @@ INT_PTR CALLBACK ServerChoose(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 		Button_SetCheck(hWndCheckBox, BST_CHECKED);
 
 		SendMessage(hDlg, WM_COMMAND, NULL, MAKELPARAM(0, IDOK));
+		
 		return (INT_PTR)TRUE;
 	}
 	case WM_COMMAND:
-		if (LOWORD(wParam) == IDOK) 
+	{
+		if (LOWORD(wParam) == IDOK)
 		{
 			// If IPv4 selected and int's valid
-			HWND hWndIpControl = GetDlgItem(hDlg, IDC_IPADDRESS);
-			DWORD address;
-			SendMessage(hWndIpControl, IPM_GETADDRESS, (WPARAM)0, (LPARAM)&address);
+			HWND hCB = GetDlgItem(hDlg, IDC_ADDRESS_TYPE);
+			int const index{ ::SendMessage(hCB, CB_GETCURSEL, NULL, NULL) };
+
+			if (index == 0)
+			{
+				HWND hWndIpControl = GetDlgItem(hDlg, IDC_IPADDRESS);
+				DWORD address;
+				SendMessage(hWndIpControl, IPM_GETADDRESS, (WPARAM)0, (LPARAM)&address);
+
+				command.Connect(21, ntohl((ULONG)address));
+			} else 
+				if (index == 1)
+				{
+					HWND hHost = GetDlgItem(hDlg, IDC_EDIT_HOST);
+					TCHAR host[128];
+					TCHAR port[] = TEXT("ftp");
+					Edit_GetText(hHost, host, 64);
+
+					command.Connect(port, host);
+				}
+
 			
-			command.Connect(21, ntohl((ULONG)address));
 			command.RecvMsg();
 			command.RecvMsg();
 
@@ -272,12 +291,12 @@ INT_PTR CALLBACK ServerChoose(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 				user = new char[] {"anonymous"};
 				password = new char[] {"1@1"};
 			}
-			
+
 			char userCommand[256];
 			sprintf_s(userCommand, "%s %s\r\n", "USER", user);
 			command.SendMsg(userCommand, strlen(userCommand));
 			command.RecvMsg();
-			
+
 
 			char passwordCommand[256];
 			sprintf_s(passwordCommand, "%s %s\r\n", "PASS", password);
@@ -291,14 +310,39 @@ INT_PTR CALLBACK ServerChoose(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 
 			EndDialog(hDlg, 1);
 			return (INT_PTR)TRUE;
-			
+
 		}
 		if (LOWORD(wParam) == IDCANCEL)
 		{
 			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)TRUE;
 		}
-		break;
+
+		switch (HIWORD(wParam))
+		{
+		case CBN_SELCHANGE:
+		{
+			HWND const control{ (HWND)lParam };
+			int const index{ ::SendMessage(control, CB_GETCURSEL, NULL, NULL) };
+			if (index == 0) {
+				HWND hIp = GetDlgItem(hDlg, IDC_IPADDRESS);
+				ShowWindow(hIp, SW_SHOW);
+				HWND hHost = GetDlgItem(hDlg, IDC_EDIT_HOST);
+				ShowWindow(hHost, SW_HIDE);
+			} else 
+				if (index == 1) {
+					HWND hIp = GetDlgItem(hDlg, IDC_IPADDRESS);
+					ShowWindow(hIp, SW_HIDE);
+					HWND hHost = GetDlgItem(hDlg, IDC_EDIT_HOST);
+					ShowWindow(hHost, SW_SHOW);
+				}
+			return 0;
+		}
+		default:
+			break;
+		}
+	} break;
+
 	}
 	return (INT_PTR)FALSE;
 }
@@ -308,13 +352,13 @@ INT_PTR CALLBACK ServerChoose(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 /// <param name="hListView"></param>
 /// <param name="mlst"></param>
 VOID PopulateFileList() {
-	
+
 	HWND hListView = GetDlgItem(hWndMain, IDC_LISTVIEW_FILES);
 	SendMessage(hListView, WM_SETREDRAW, FALSE, NULL);
-	
+
 	char filefacts[1024];
 
-	while(data.RecvNextMLST(filefacts, 1024)) {
+	while (data.RecvNextMLST(filefacts, 1024)) {
 		char szfilenameA[512];
 		int filenamelen = ExtractFileNameFromMLST(filefacts, szfilenameA, 512);
 		::std::wstring szfilenameW;
@@ -322,7 +366,7 @@ VOID PopulateFileList() {
 
 		int r = MultiByteToWideChar(CP_UTF8, 0, szfilenameA, filenamelen, &szfilenameW[0], (int)szfilenameW.size());
 
- 		LVITEM lvItem = { LVIF_TEXT | LVIF_IMAGE };
+		LVITEM lvItem = { LVIF_TEXT | LVIF_IMAGE };
 		lvItem.iItem = ListView_GetItemCount(hListView);
 		lvItem.pszText = &szfilenameW[0];
 		lvItem.iItem = ListView_InsertItem(hListView, &lvItem);
@@ -338,7 +382,7 @@ VOID PopulateFileList() {
 	RedrawWindow(hListView, NULL, NULL, RDW_ERASE | RDW_FRAME | RDW_INVALIDATE | RDW_ALLCHILDREN);
 }
 
-int ExtractFileNameFromMLST(char const* filefacts, char *filename, int filenamesize)
+int ExtractFileNameFromMLST(char const* filefacts, char* filename, int filenamesize)
 {
 	int i = strnlen_s(filefacts, filenamesize) - 1;
 	while (filefacts[i] != ';')
@@ -361,12 +405,12 @@ int ExtractFileNameFromMLST(char const* filefacts, char *filename, int filenames
 
 int	ExtractFactFromMLST(char const* szFilefacts, const char* szFact, char* szFactVal)
 {
-	const char *pos = strstr(szFilefacts, szFact);
+	const char* pos = strstr(szFilefacts, szFact);
 	if (pos == NULL)
 		return 0;
 	pos += strlen(szFact) + 1;
 	int i = 0;
-	
+
 	for (; *pos != ';'; szFactVal[i] = *pos, i++, pos++);
 	return i;
 }
@@ -414,13 +458,13 @@ VOID OnCommand(HWND hwnd, int id, HWND hwndCtl, UINT codeNotify)
 					{
 						// We are just going to print out the 
 						// name of the file for sample sake.
-						
+
 						hr = psiResult->GetDisplayName(SIGDN_FILESYSPATH,
 							&pszFilePath);
 						if (SUCCEEDED(hr))
 						{
 							logA("%s", pszFilePath);
-						
+
 						}
 						psiResult->Release();
 					}
@@ -429,16 +473,16 @@ VOID OnCommand(HWND hwnd, int id, HWND hwndCtl, UINT codeNotify)
 
 			pfd->Release();
 
-			
+
 			EnterPassivMode();
 
 			char szFileNameA[128];
 			WideCharToMultiByte(CP_UTF8, 0, &szFileNameW[0], szFileNameW.size(), szFileNameA, 128, NULL, NULL);
 			char szRetrCommand[256];
-			
+
 			sprintf_s(szRetrCommand, "%s %s\r\n", "RETR", szFileNameA);
 			command.SendMsg(szRetrCommand, strlen(szRetrCommand));
-			
+
 			command.RecvMsg();
 			data.SaveFile(pszFilePath);
 			TCHAR text[256];
